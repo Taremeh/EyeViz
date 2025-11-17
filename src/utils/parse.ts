@@ -6,6 +6,16 @@ function isUrlLike(value: string): boolean {
 	return /^https?:\/\//i.test(value);
 }
 
+function isPathLike(value: string): boolean {
+	// Heuristic: likely a path if it looks like "/file.ext" or "./file.ext" or "folder/file.ext"
+	// and does NOT contain obvious CSV content chars or newlines
+	if (/\r|\n/.test(value)) return false;
+	const hasPathSep = /[\/\\]/.test(value);
+	const hasExt = /\.[a-z0-9]+$/i.test(value);
+	const looksLikeInlineData = /[,;\t]/.test(value); // quick check for CSV-ish content
+	return (hasPathSep || hasExt) && !looksLikeInlineData;
+}
+
 async function readAsText(input: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();
@@ -22,6 +32,66 @@ async function readAsArrayBuffer(input: Blob): Promise<ArrayBuffer> {
 		reader.onerror = reject;
 		reader.readAsArrayBuffer(input);
 	});
+}
+
+function decodeTextSmartFromArrayBuffer(buffer: ArrayBuffer, contentType?: string | null): string {
+	try {
+		const u8 = new Uint8Array(buffer);
+		// BOM check
+		if (u8.length >= 2) {
+			if (u8[0] === 0xff && u8[1] === 0xfe) {
+				return new TextDecoder('utf-16le').decode(buffer);
+			}
+			if (u8[0] === 0xfe && u8[1] === 0xff) {
+				try {
+					return new TextDecoder('utf-16be' as any).decode(buffer);
+				} catch {
+					// Some environments might not support utf-16be explicitly; fall back to generic utf-16
+					return new TextDecoder('utf-16').decode(buffer);
+				}
+			}
+		}
+		// Heuristic: count zeros on even/odd positions
+		const sampleLen = Math.min(u8.length, 2000);
+		let evenZeros = 0;
+		let oddZeros = 0;
+		for (let i = 0; i < sampleLen; i++) {
+			if (u8[i] === 0) {
+				if (i % 2 === 0) evenZeros++;
+				else oddZeros++;
+			}
+		}
+		if (evenZeros > oddZeros * 3) {
+			try {
+				return new TextDecoder('utf-16be' as any).decode(buffer);
+			} catch {
+				return new TextDecoder('utf-16').decode(buffer);
+			}
+		}
+		if (oddZeros > evenZeros * 3) {
+			return new TextDecoder('utf-16le').decode(buffer);
+		}
+		// Default to UTF-8
+		return new TextDecoder('utf-8').decode(buffer);
+	} catch {
+		// Fallback last resort
+		try {
+			return new TextDecoder().decode(buffer);
+		} catch {
+			// Should not happen in modern browsers
+			return '';
+		}
+	}
+}
+
+async function fetchTextSmart(url: string): Promise<{ text: string; contentType: string | null }> {
+	const res = await fetch(url);
+	const contentType = res.headers.get('content-type');
+	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+	// Always decode manually to handle UTF-16 data served without charset
+	const buffer = await res.arrayBuffer();
+	const text = decodeTextSmartFromArrayBuffer(buffer, contentType);
+	return { text, contentType };
 }
 
 function looksLikeCSV(filename?: string, contentHint?: string): boolean {
@@ -47,6 +117,11 @@ function toString(value: unknown): string | undefined {
 	if (value == null) return undefined;
 	const s = String(value).trim();
 	return s.length ? s : undefined;
+}
+
+function toAbsNumber(value: unknown): number | undefined {
+	const n = toNumber(value);
+	return n == null ? undefined : Math.abs(n);
 }
 
 function pick(row: Record<string, unknown>, col?: string): unknown {
@@ -104,7 +179,7 @@ function detectFixationRow(
 			return s != null ? s * 1000 : undefined;
 		})();
 
-	const durationMs =
+	let durationMs =
 		toNumber(pick(row, columns?.durationMs)) ??
 		toNumber(map['duration']) ??
 		toNumber(map['dur']) ??
@@ -117,6 +192,18 @@ function detectFixationRow(
 				toNumber(map['durations']);
 			return s != null ? s * 1000 : undefined;
 		})();
+
+	// If duration missing but END exists, derive from END - START
+	if ((durationMs == null || !Number.isFinite(durationMs)) && startMs != null) {
+		const endMs =
+			toNumber(pick(row, columns?.endMs)) ??
+			toNumber(map['endms']) ??
+			toNumber(map['end']) ??
+			toNumber(map['current_fix_end']);
+		if (endMs != null && Number.isFinite(endMs)) {
+			durationMs = endMs - startMs;
+		}
+	}
 
 	if (x == null || y == null || startMs == null || durationMs == null) {
 		return null;
@@ -255,19 +342,128 @@ function detectIARow(row: Record<string, unknown>, columns?: IAColumnMap): IARec
 	return null;
 }
 
-function parseCSVTextToObjects(text: string): Array<Record<string, unknown>> {
-	// Avoid generic type parameters to support environments without @types/papaparse
-	const result = (Papa.parse as any)(text, {
+function parseIASFileText(text: string): IARecord[] {
+	// .ias format header example:
+	// # IA	start_time	end_time	shape	ID	x	y	right	bottom	label
+	const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0 && !l.trim().startsWith('#'));
+	const out: IARecord[] = [];
+	for (const line of lines) {
+		const parts = line.split('\t');
+		if (parts.length < 9) continue;
+		// Detect where shape column is to handle presence/absence of a leading index column
+		let startIdx = 0;
+		const p2 = (parts[2] || '').toString().toUpperCase();
+		const p3 = (parts[3] || '').toString().toUpperCase();
+		if (p2 === 'RECTANGLE' || p2 === 'CIRCLE' || p2 === 'POLYGON') {
+			startIdx = 0;
+		} else if (p3 === 'RECTANGLE' || p3 === 'CIRCLE' || p3 === 'POLYGON') {
+			startIdx = 1;
+		}
+		const startRaw = parts[startIdx + 0];
+		const endRaw = parts[startIdx + 1];
+		const shape = String(parts[startIdx + 2] || '').toUpperCase();
+		const id = String(parts[startIdx + 3] || '').trim();
+		const x = toNumber(parts[startIdx + 4]);
+		const y = toNumber(parts[startIdx + 5]);
+		const right = toNumber(parts[startIdx + 6]);
+		const bottom = toNumber(parts[startIdx + 7]);
+		const label = String(parts[startIdx + 8] || '').trim();
+		const start = toAbsNumber(startRaw);
+		const end = toAbsNumber(endRaw);
+		if (start == null || end == null) continue;
+		if (shape === 'RECTANGLE' && x != null && y != null && right != null && bottom != null) {
+			const width = right - x;
+			const height = bottom - y;
+			if (width > 0 && height > 0) {
+				out.push({
+					type: 'rect',
+					rect: { x, y, width, height },
+					id,
+					label,
+					startMs: start,
+					endMs: end
+				});
+			}
+		}
+	}
+	return out;
+}
+
+function detectDelimiter(text: string, filename?: string): string | undefined {
+	// Prefer extension hints
+	if (filename && /\.(tsv|tab)$/i.test(filename)) return '\t';
+	if (filename && /\.(csv)$/i.test(filename)) {
+		// Could still be TSV despite .csv; keep checking content
+	}
+	// Look at the first few non-empty lines
+	const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0).slice(0, 5);
+	const counts: Record<string, number> = { '\t': 0, ';': 0, ',': 0, '|': 0 };
+	for (const line of lines) {
+		counts['\t'] += (line.match(/\t/g) || []).length;
+		counts[';'] += (line.match(/;/g) || []).length;
+		counts[','] += (line.match(/,/g) || []).length;
+		counts['|'] += (line.match(/\|/g) || []).length;
+	}
+	const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+	if (best && best[1] > 0) return best[0];
+	// Fallback: if tabs present anywhere
+	if (/\t/.test(text)) return '\t';
+	return undefined;
+}
+
+function parseCSVTextToObjects(text: string, filename?: string): Array<Record<string, unknown>> {
+	// Strip BOM if present
+	if (text.charCodeAt(0) === 0xfeff) {
+		text = text.slice(1);
+	}
+	const baseConfig = {
 		header: true,
 		dynamicTyping: true,
 		skipEmptyLines: true
-	});
-	if ((result.errors as any)?.length) {
-		// Ignore empty line warnings, throw other errors
-		const fatal = (result.errors as any).find((e: any) => e.type !== 'FieldMismatch');
-		if (fatal) throw new Error(`CSV parse error: ${fatal.message}`);
+	};
+	const primary = detectDelimiter(text, filename);
+	const candidateDelims = Array.from(
+		new Set<string>([primary, '\t', ';', '|', ','].filter(Boolean) as string[])
+	);
+	let firstFatal: any = null;
+	for (const delim of candidateDelims) {
+		const result = (Papa.parse as any)(text, { ...baseConfig, delimiter: delim });
+		const errors = (result.errors as any) || [];
+		const fatal = errors.find((e: any) => e.type !== 'FieldMismatch');
+		if (!fatal) {
+			const data = result.data as Array<Record<string, unknown>>;
+			if (Array.isArray(data) && data.length > 0) return data;
+			// If parsed but empty, continue trying other delimiters
+		}
+		// Capture 'UndetectableDelimiter' or any fatal, then try next delimiter
+		if (!firstFatal) firstFatal = fatal;
 	}
-	return result.data as Array<Record<string, unknown>>;
+	// Last resort: try Papa's auto-detect
+	const auto = (Papa.parse as any)(text, baseConfig);
+	const autoErrors = (auto.errors as any) || [];
+	const autoFatal = autoErrors.find((e: any) => e.type !== 'FieldMismatch');
+	if (!autoFatal) {
+		const data = auto.data as Array<Record<string, unknown>>;
+		if (Array.isArray(data) && data.length > 0) return data;
+	}
+	// Manual TSV fallback if content clearly contains tabs
+	if (/\t/.test(text)) {
+		const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+		if (lines.length > 1) {
+			const header = lines[0].split('\t');
+			const rows: Array<Record<string, unknown>> = [];
+			for (let i = 1; i < lines.length; i++) {
+				const cols = lines[i].split('\t');
+				const obj: Record<string, unknown> = {};
+				for (let j = 0; j < header.length; j++) {
+					obj[header[j]] = cols[j];
+				}
+				rows.push(obj);
+			}
+			if (rows.length > 0) return rows;
+		}
+	}
+	throw new Error(`CSV parse error: ${String((firstFatal || autoFatal)?.message || 'Unknown error')} (and TSV fallback yielded no rows)`);
 }
 
 function xlsxToObjects(buffer: ArrayBuffer): Array<Record<string, unknown>> {
@@ -286,22 +482,31 @@ export async function parseFixationsFromSource(
 	}
 	// String may be URL or raw CSV text
 	if (typeof source === 'string') {
-		if (isUrlLike(source)) {
-			const res = await fetch(source);
-			const contentType = res.headers.get('content-type') ?? '';
-			if (!res.ok) throw new Error(`Failed to fetch fixations: ${res.status}`);
-			if (/sheet|excel|officedocument/i.test(contentType) || /\.xlsx?$/i.test(source)) {
-				const buf = await res.arrayBuffer();
-				const rows = xlsxToObjects(buf);
+		if (isUrlLike(source) || (typeof window !== 'undefined' && isPathLike(source))) {
+			const { text, contentType } = await fetchTextSmart(source);
+			if (/sheet|excel|officedocument/i.test(contentType ?? '') || /\.xlsx?$/i.test(source)) {
+				// We fetched as array buffer in fetchTextSmart, but we need the buffer again for xlsx path; refetch array buffer
+				const res2 = await fetch(source);
+				const buf2 = await res2.arrayBuffer();
+				const rows = xlsxToObjects(buf2);
 				return rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
 			}
-			const text = await res.text();
-			const rows = parseCSVTextToObjects(text);
-			return rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
+			const rows = parseCSVTextToObjects(text, source);
+			const fxs = rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
+			if (typeof window !== 'undefined' && fxs.length === 0) {
+				// eslint-disable-next-line no-console
+				console.debug('EyeViz fixation parse: 0 records mapped. First row keys:', Object.keys(rows[0] || {}));
+			}
+			return fxs;
 		}
 		// Assume it's CSV/TSV/TXT content
 		const rows = parseCSVTextToObjects(source);
-		return rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
+		const fxs = rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
+		if (typeof window !== 'undefined' && fxs.length === 0) {
+			// eslint-disable-next-line no-console
+			console.debug('EyeViz fixation parse (inline): 0 records mapped. First row keys:', Object.keys(rows[0] || {}));
+		}
+		return fxs;
 	}
 
 	// Blob/File
@@ -311,14 +516,25 @@ export async function parseFixationsFromSource(
 		const rows = xlsxToObjects(buffer);
 		return rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
 	}
-	const text = await readAsText(source);
-	const rows = looksLikeCSV(filename, text) ? parseCSVTextToObjects(text) : parseCSVTextToObjects(text);
-	return rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
+	// Read as buffer and smart-decode to handle UTF-16 files
+	const ab = await readAsArrayBuffer(source);
+	const text = decodeTextSmartFromArrayBuffer(ab, (source as any)?.type);
+	const rows = looksLikeCSV(filename, text) ? parseCSVTextToObjects(text, filename) : parseCSVTextToObjects(text, filename);
+	const fxs = rows.map(r => detectFixationRow(r, options?.columns)).filter((r): r is FixationRecord => !!r);
+	if (typeof window !== 'undefined' && fxs.length === 0) {
+		// eslint-disable-next-line no-console
+		console.debug('EyeViz fixation parse (blob): 0 records mapped. First row keys:', Object.keys(rows[0] || {}));
+	}
+	return fxs;
 }
 
 export async function parseIAsFromSource(
 	source?: string | File | Blob | IARecord[],
-	options?: { columns?: IAColumnMap; iaRowToShape?: (row: Record<string, unknown>) => IARecord | null }
+	options?: {
+		columns?: IAColumnMap;
+		iaRowToShape?: (row: Record<string, unknown>) => IARecord | null;
+		timestampUnit?: 'ms' | 's' | 'us';
+	}
 ): Promise<IARecord[]> {
 	if (!source) return [];
 	if (Array.isArray(source)) {
@@ -335,33 +551,70 @@ export async function parseIAsFromSource(
 			.filter((r): r is IARecord => !!r);
 		return out;
 	};
-	if (typeof source === 'string') {
-		if (isUrlLike(source)) {
-			const res = await fetch(source);
-			const contentType = res.headers.get('content-type') ?? '';
-			if (!res.ok) throw new Error(`Failed to fetch IA: ${res.status}`);
-			if (/sheet|excel|officedocument/i.test(contentType) || /\.xlsx?$/i.test(source)) {
-				const buf = await res.arrayBuffer();
-				const rows = xlsxToObjects(buf);
-				return mapRows(rows);
+	const scaleToMs = (value: number | undefined): number | undefined => {
+		if (value == null) return undefined;
+		const unit = options?.timestampUnit ?? 'ms';
+		if (unit === 'ms') return value;
+		if (unit === 's') return value * 1000;
+		if (unit === 'us') return value / 1000;
+		return value;
+	};
+	const scaleIAsToMs = (ias: IARecord[]): IARecord[] => {
+		return ias.map(ia => {
+			if (ia.startMs != null || ia.endMs != null) {
+				return {
+					...ia,
+					startMs: scaleToMs(ia.startMs),
+					endMs: scaleToMs(ia.endMs)
+				};
 			}
-			const text = await res.text();
+			return ia;
+		});
+	};
+	if (typeof source === 'string') {
+		if (isUrlLike(source) || (typeof window !== 'undefined' && isPathLike(source))) {
+			const { text, contentType } = await fetchTextSmart(source);
+			if (/\.ias$/i.test(source)) {
+				return scaleIAsToMs(parseIASFileText(text));
+			}
+			if (/sheet|excel|officedocument/i.test(contentType ?? '') || /\.xlsx?$/i.test(source)) {
+				// Need array buffer for xlsx
+				const res2 = await fetch(source);
+				const buf2 = await res2.arrayBuffer();
+				const rows = xlsxToObjects(buf2);
+				return scaleIAsToMs(mapRows(rows));
+			}
 			// TXT may be one IA per line; try CSV parser regardless
-			const rows = parseCSVTextToObjects(text);
-			return mapRows(rows);
+			if (/^#\s*IA/i.test(text)) {
+				return scaleIAsToMs(parseIASFileText(text));
+			}
+			const rows = parseCSVTextToObjects(text, source);
+			return scaleIAsToMs(mapRows(rows));
 		}
 		// Plain text content -> CSV attempt
+		if (/^#\s*IA/i.test(source)) {
+			return scaleIAsToMs(parseIASFileText(source));
+		}
 		const rows = parseCSVTextToObjects(source);
-		return mapRows(rows);
+		return scaleIAsToMs(mapRows(rows));
 	}
 	const filename = (source as File)?.name;
+	if (filename && /\.ias$/i.test(filename)) {
+		const ab = await readAsArrayBuffer(source);
+		const text = decodeTextSmartFromArrayBuffer(ab, (source as any)?.type);
+		return scaleIAsToMs(parseIASFileText(text));
+	}
 	if (looksLikeXLS(filename)) {
 		const buffer = await readAsArrayBuffer(source);
 		const rows = xlsxToObjects(buffer);
-		return mapRows(rows);
+		return scaleIAsToMs(mapRows(rows));
 	}
-	const text = await readAsText(source);
-	const rows = parseCSVTextToObjects(text);
-	return mapRows(rows);
+	const ab = await readAsArrayBuffer(source);
+	const text = decodeTextSmartFromArrayBuffer(ab, (source as any)?.type);
+	if (/^#\s*IA/i.test(text)) {
+		return scaleIAsToMs(parseIASFileText(text));
+	}
+	const rows = parseCSVTextToObjects(text, filename);
+	return scaleIAsToMs(mapRows(rows));
 }
 

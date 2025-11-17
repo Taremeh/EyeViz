@@ -98,11 +98,15 @@ Fixations (e.g. `fixation_report_sample.csv`, tab-separated):
 
 Note: the parser is flexible and also recognizes common variants (e.g., `x`, `y`, `startMs`, `duration`, etc.).
 
-IA report (e.g. `IA_report_sample.txt`, tab-separated):
+Dynamic IA file (`.ias`, tab-separated):
 
-- Columns include: `IA_ID`, `IA_LABEL`, `IA_AREA`, `IA_FIXATION_COUNT`, etc.
-- This sample contains IA metrics only and does not include geometry (rect/polygon/circle), so shape overlays cannot be drawn from this file alone.
-- To draw IA shapes, either provide a separate geometry file (CSV/XLS(X)/TXT) with rectangle/circle/polygon columns or use the custom mapping callback `iaRowToShape` described below.
+- Header example:
+  `# IA	start_time	end_time	shape	ID	x	y	right	bottom	label`
+- Rows example:
+  `-1176028	-1176284	RECTANGLE	1	387.77	605.00	713.28	671.00	autolabel_1`
+- We ignore the leading '-' on times (treated as absolute).
+- Units: milliseconds. Use `iaTimestampUnit` if your data is in a different unit.
+- Rectangles are defined by top-left (`x`,`y`) and bottom-right (`right`,`bottom`).
 
 CSV/XLS(X) headers are auto-detected. For fixations, typical columns include:
 
@@ -157,7 +161,9 @@ When your columns use different names, supply a mapping:
 
 - `coordinateSystem`: 'pixels' | 'normalized' (default 'pixels')
 - `timestampUnit`: 'ms' | 's' (default 'ms') – applied to parsed fixation data
+- `iaTimestampUnit`: 'ms' | 's' | 'us' (default 'ms') – applied to parsed IA times (when present)
 - `videoStartOffsetMs`: align fixations with video (default 0)
+- `iaTimeOffsetMs`: align IAs with video (default 0)
 - `initialShowFixations`, `initialShowIAs`: default toggles (true)
 - `pointColor`, `pointOpacity`, `pointRadiusPx`: fixation rendering
 - `fixationColumnMap`: map custom fixation column names (x, y, startMs/startSec, durationMs/durationSec, etc.)

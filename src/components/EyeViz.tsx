@@ -16,23 +16,28 @@ function getVideoNaturalSize(video: HTMLVideoElement): { width: number; height: 
 	return { width, height };
 }
 
-function scaleCoord(
-	value: number,
-	system: 'pixels' | 'normalized',
-	max: number
-): number {
-	if (system === 'pixels') return value;
+function scaleCoord(value: number, system: 'pixels' | 'normalized', max: number, scale: number): number {
+	if (system === 'pixels') return value * scale;
 	return value * max;
 }
 
 function drawIAs(
 	ctx: CanvasRenderingContext2D,
 	ias: IARecord[],
+	currentTimeMs: number,
 	coordSystem: 'pixels' | 'normalized',
 	canvasWidth: number,
-	canvasHeight: number
+	canvasHeight: number,
+	scaleX: number,
+	scaleY: number
 ) {
 	for (const ia of ias) {
+		// Respect time window if provided
+		if (ia.startMs != null && ia.endMs != null) {
+			if (!(currentTimeMs >= ia.startMs && currentTimeMs <= ia.endMs)) {
+				continue;
+			}
+		}
 		const color = ia.color ?? 'rgba(0, 128, 255, 0.25)';
 		const opacity = (ia.opacity ?? 0.25);
 		ctx.save();
@@ -41,10 +46,10 @@ function drawIAs(
 		ctx.fillStyle = color;
 		ctx.lineWidth = 2;
 		if (ia.type === 'rect') {
-			const x = scaleCoord(ia.rect.x, coordSystem, canvasWidth);
-			const y = scaleCoord(ia.rect.y, coordSystem, canvasHeight);
-			const w = scaleCoord(ia.rect.width, coordSystem, canvasWidth);
-			const h = scaleCoord(ia.rect.height, coordSystem, canvasHeight);
+			const x = scaleCoord(ia.rect.x, coordSystem, canvasWidth, scaleX);
+			const y = scaleCoord(ia.rect.y, coordSystem, canvasHeight, scaleY);
+			const w = scaleCoord(ia.rect.width, coordSystem, canvasWidth, scaleX);
+			const h = scaleCoord(ia.rect.height, coordSystem, canvasHeight, scaleY);
 			ctx.beginPath();
 			ctx.rect(x, y, w, h);
 			ctx.fill();
@@ -54,13 +59,13 @@ function drawIAs(
 				ctx.beginPath();
 				const [first, ...rest] = ia.polygon;
 				ctx.moveTo(
-					scaleCoord(first.x, coordSystem, canvasWidth),
-					scaleCoord(first.y, coordSystem, canvasHeight)
+					scaleCoord(first.x, coordSystem, canvasWidth, scaleX),
+					scaleCoord(first.y, coordSystem, canvasHeight, scaleY)
 				);
 				for (const p of rest) {
 					ctx.lineTo(
-						scaleCoord(p.x, coordSystem, canvasWidth),
-						scaleCoord(p.y, coordSystem, canvasHeight)
+						scaleCoord(p.x, coordSystem, canvasWidth, scaleX),
+						scaleCoord(p.y, coordSystem, canvasHeight, scaleY)
 					);
 				}
 				ctx.closePath();
@@ -68,9 +73,9 @@ function drawIAs(
 				ctx.stroke();
 			}
 		} else if (ia.type === 'circle') {
-			const cx = scaleCoord(ia.circle.cx, coordSystem, canvasWidth);
-			const cy = scaleCoord(ia.circle.cy, coordSystem, canvasHeight);
-			const r = scaleCoord(ia.circle.r, coordSystem, Math.min(canvasWidth, canvasHeight));
+			const cx = scaleCoord(ia.circle.cx, coordSystem, canvasWidth, scaleX);
+			const cy = scaleCoord(ia.circle.cy, coordSystem, canvasHeight, scaleY);
+			const r = scaleCoord(ia.circle.r, coordSystem, Math.min(canvasWidth, canvasHeight), (scaleX + scaleY) / 2);
 			ctx.beginPath();
 			ctx.arc(cx, cy, r, 0, Math.PI * 2);
 			ctx.fill();
@@ -87,6 +92,8 @@ function drawFixations(
 	coordSystem: 'pixels' | 'normalized',
 	canvasWidth: number,
 	canvasHeight: number,
+	scaleX: number,
+	scaleY: number,
 	defaultColor: string,
 	defaultOpacity: number,
 	defaultRadiusPx: number
@@ -95,8 +102,8 @@ function drawFixations(
 		const start = f.startMs;
 		const end = f.startMs + f.durationMs;
 		if (currentTimeMs >= start && currentTimeMs <= end) {
-			const x = scaleCoord(f.x, coordSystem, canvasWidth);
-			const y = scaleCoord(f.y, coordSystem, canvasHeight);
+			const x = scaleCoord(f.x, coordSystem, canvasWidth, scaleX);
+			const y = scaleCoord(f.y, coordSystem, canvasHeight, scaleY);
 			const r = f.radiusPx ?? defaultRadiusPx;
 			const color = f.color ?? defaultColor;
 			const alpha = clamp(f.opacity ?? defaultOpacity, 0, 1);
@@ -117,7 +124,13 @@ export const EyeViz = ({
 	iaSource,
 	coordinateSystem = 'pixels',
 	timestampUnit = 'ms',
+	iaTimestampUnit = 'ms',
 	videoStartOffsetMs = 0,
+	iaTimeOffsetMs = 0,
+	fixationSurfaceSize,
+	iaSurfaceSize,
+	normalizeFixationTime,
+	normalizeIATime,
 	style,
 	className,
 	initialShowFixations = true,
@@ -146,20 +159,41 @@ export const EyeViz = ({
 		let mounted = true;
 		async function run() {
 			try {
-				const [fx, ia] = await Promise.all([
+				let [fx, ia] = await Promise.all([
 					parseFixationsFromSource(fixationSource, { columns: fixationColumnMap }),
-					parseIAsFromSource(iaSource, { columns: iaColumnMap, iaRowToShape })
+					parseIAsFromSource(iaSource, { columns: iaColumnMap, iaRowToShape, timestampUnit: iaTimestampUnit })
 				]);
 				// Normalize timestamp unit
 				const factor = timestampUnit === 's' ? 1000 : 1;
-				const normalized = fx.map(f => ({
+				let normalizedFx = fx.map(f => ({
 					...f,
 					startMs: f.startMs * factor,
 					durationMs: f.durationMs * factor
 				}));
+				if (normalizeFixationTime && normalizedFx.length) {
+					const minStart = Math.min(...normalizedFx.map(f => f.startMs));
+					if (Number.isFinite(minStart)) {
+						normalizedFx = normalizedFx.map(f => ({ ...f, startMs: f.startMs - minStart }));
+					}
+				}
+				if (normalizeIATime && ia.length) {
+					const starts = ia.map(i => i.startMs).filter((v): v is number => typeof v === 'number');
+					if (starts.length) {
+						const minIA = Math.min(...starts);
+						if (Number.isFinite(minIA)) {
+							ia = ia.map(i =>
+								i.startMs != null
+									? { ...i, startMs: i.startMs - minIA, endMs: i.endMs != null ? i.endMs - minIA : i.endMs }
+									: i
+							);
+						}
+					}
+				}
 				if (!mounted) return;
-				setFixations(normalized);
+				setFixations(normalizedFx);
 				setIAs(ia);
+				// eslint-disable-next-line no-console
+				console.debug('EyeViz parsed', normalizedFx.length, 'fixations and', ia.length, 'IAs');
 			} catch (err) {
 				if (onParseError) onParseError(err);
 				// eslint-disable-next-line no-console
@@ -173,7 +207,7 @@ export const EyeViz = ({
 		return () => {
 			mounted = false;
 		};
-	}, [fixationSource, iaSource, timestampUnit, onParseError]);
+	}, [fixationSource, iaSource, timestampUnit, iaTimestampUnit, onParseError]);
 
 	// Resize canvas to match video dimensions
 	const resizeCanvasToVideo = React.useCallback(() => {
@@ -223,18 +257,35 @@ export const EyeViz = ({
 		// Clear
 		ctx.clearRect(0, 0, width, height);
 		// Draw overlays
+		const currentTimeMs = video.currentTime * 1000;
+		// Compute scaling if surface size differs
+		let fixScaleX = 1;
+		let fixScaleY = 1;
+		let iaScaleX = 1;
+		let iaScaleY = 1;
+		if (coordinateSystem === 'pixels') {
+			if (fixationSurfaceSize) {
+				fixScaleX = width / fixationSurfaceSize.width;
+				fixScaleY = height / fixationSurfaceSize.height;
+			}
+			if (iaSurfaceSize) {
+				iaScaleX = width / iaSurfaceSize.width;
+				iaScaleY = height / iaSurfaceSize.height;
+			}
+		}
 		if (showIAs && ias.length) {
-			drawIAs(ctx, ias, coordinateSystem, width, height);
+			drawIAs(ctx, ias, currentTimeMs - iaTimeOffsetMs, coordinateSystem, width, height, iaScaleX, iaScaleY);
 		}
 		if (showFixations && fixations.length) {
-			const currentTimeMs = video.currentTime * 1000 - videoStartOffsetMs;
 			drawFixations(
 				ctx,
 				fixations,
-				currentTimeMs,
+				currentTimeMs - videoStartOffsetMs,
 				coordinateSystem,
 				width,
 				height,
+				fixScaleX,
+				fixScaleY,
 				pointColor,
 				pointOpacity,
 				pointRadiusPx
@@ -247,6 +298,7 @@ export const EyeViz = ({
 		showIAs,
 		coordinateSystem,
 		videoStartOffsetMs,
+		iaTimeOffsetMs,
 		pointColor,
 		pointOpacity,
 		pointRadiusPx

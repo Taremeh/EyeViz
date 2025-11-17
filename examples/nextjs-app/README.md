@@ -9,7 +9,7 @@ Minimal Next.js app showing the `eyeviz` component with your sample data.
 - From the project root (`/Users/tarek/Documents/UZH/EYEVIZ`), copy:
   - `data/screenrecording_sample.mp4` -> `examples/nextjs-app/public/screenrecording_sample.mp4`
   - `data/fixation_report_sample.csv` -> `examples/nextjs-app/public/fixation_report_sample.csv`
-  - `data/IA_report_sample.txt` -> `examples/nextjs-app/public/IA_report_sample.txt`
+  - `data/dynamic_interest_areas_sample.ias` -> `examples/nextjs-app/public/dynamic_interest_areas_sample.ias`
 
 2) Install dependencies and link local package:
 
@@ -37,7 +37,24 @@ npm run dev
 
 - `fixation_report_sample.csv` (tab-separated) contains columns like:
   - `CURRENT_FIX_X`, `CURRENT_FIX_Y`, `CURRENT_FIX_START` (ms), `CURRENT_FIX_DURATION` (ms)
-- `IA_report_sample.txt` (tab-separated) contains IA metrics (e.g., `IA_ID`, `IA_LABEL`, `IA_AREA`), not geometry.
+- `dynamic_interest_areas_sample.ias` (tab-separated) contains dynamic IA rectangles WITH timing:
+
+Header example:
+
+```
+# IA	start_time	end_time	shape	ID	x	y	right	bottom	label
+```
+
+Rows example (tabs between values):
+
+```
+-1176028	-1176284	RECTANGLE	1	387.77	605.00	713.28	671.00	autolabel_1
+```
+
+Notes:
+- Times can be negative; the '-' is ignored (treated as absolute).
+- Units: milliseconds.
+- Rectangle is defined by `x`/`y` (top-left) and `right`/`bottom` (bottom-right).
 
 The example maps fixation columns via `fixationColumnMap` in `app/page.tsx`:
 
@@ -50,23 +67,16 @@ fixationColumnMap={{
 }}
 ```
 
-Since `IA_report_sample.txt` lacks geometry columns, no IA shapes are drawn by default. To render IA overlays, either:
-
-- Provide a geometry file (rect/circle/polygon columns) and set `iaColumnMap`, or
-- Use `iaRowToShape(row)` to convert IA rows into drawable shapes.
-
-Example for a custom shape (replace in `app/page.tsx`):
+If you use another IA format (CSV/XLSX), you can still map columns or synthesize shapes:
 
 ```tsx
-iaRowToShape={(row) => {
-  if (String(row['IA_ID']) === '1') {
-    return {
-      type: 'rect',
-      rect: { x: 100, y: 100, width: 200, height: 150 },
-      label: String(row['IA_LABEL'])
-    };
-  }
-  return null;
+iaColumnMap={{
+  x: 'left',
+  y: 'top',
+  width: 'width',
+  height: 'height',
+  label: 'IA_LABEL',
+  id: 'IA_ID'
 }}
 ```
 

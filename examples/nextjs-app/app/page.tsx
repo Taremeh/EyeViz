@@ -12,18 +12,22 @@ export default function Page() {
 				<EyeViz
 					videoSrc="/screenrecording_sample.mp4"
 					fixationSource="/fixation_report_sample.csv"
-					iaSource="/IA_report_sample.txt"
+					iaSource="/dynamic_interest_areas_sample.ias"
 					coordinateSystem="pixels"
 					timestampUnit="ms"
+					// normalizeFixationTime
+					// normalizeIATime
+					fixationSurfaceSize={{ width: 1920, height: 1080 }}
+					iaSurfaceSize={{ width: 1920, height: 1080 }}
+					pointRadiusPx={12}
 					fixationColumnMap={{
 						x: "CURRENT_FIX_X",
 						y: "CURRENT_FIX_Y",
 						startMs: "CURRENT_FIX_START",
-						durationMs: "CURRENT_FIX_DURATION"
+						durationMs: "CURRENT_FIX_DURATION",
+						endMs: "CURRENT_FIX_END"
 					}}
-					// IA sample doesn't contain geometry; overlay will be empty unless you provide shapes
-					// via iaColumnMap (if a geometry file) or iaRowToShape (custom).
-					iaRowToShape={() => null}
+					// .ias already provides IA geometry and timing
 				/>
 			</div>
 		</div>

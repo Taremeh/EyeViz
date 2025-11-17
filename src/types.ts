@@ -20,6 +20,8 @@ export interface IARecordBase {
 	label?: string;
 	color?: string;
 	opacity?: number;
+	startMs?: number;
+	endMs?: number;
 }
 
 export interface IARect extends IARecordBase {
@@ -46,6 +48,7 @@ export interface FixationColumnMap {
 	startSec?: string; // seconds column (as alternative)
 	durationMs?: string; // ms column
 	durationSec?: string; // seconds column (as alternative)
+	endMs?: string; // optional end timestamp column (ms)
 	radiusPx?: string;
 	color?: string;
 	opacity?: string;
@@ -78,7 +81,13 @@ export interface EyeVizProps {
 	iaSource?: string | File | Blob | IARecord[];
 	coordinateSystem?: CoordinateSystem;
 	timestampUnit?: 'ms' | 's';
+	iaTimestampUnit?: 'ms' | 's' | 'us';
 	videoStartOffsetMs?: number;
+	iaTimeOffsetMs?: number;
+	fixationSurfaceSize?: { width: number; height: number }; // original capture surface for fixations
+	iaSurfaceSize?: { width: number; height: number }; // original capture surface for IAs
+	normalizeFixationTime?: boolean; // subtract min start from all fixations
+	normalizeIATime?: boolean; // subtract min start from all IAs
 	style?: import('react').CSSProperties;
 	className?: string;
 	initialShowFixations?: boolean;
