@@ -95,6 +95,11 @@ export interface EyeVizProps {
 	pointColor?: string;
 	pointOpacity?: number;
 	pointRadiusPx?: number;
+	// IA styling (global defaults; individual IA color/opacity can still override)
+	iaFillStyle?: string; // default fill style for IAs
+	iaStrokeStyle?: string; // default stroke style for IAs
+	iaLineWidth?: number; // default stroke width for IAs
+	iaOpacity?: number; // default opacity for IAs
 	fixationColumnMap?: FixationColumnMap;
 	iaColumnMap?: IAColumnMap;
 	iaRowToShape?: (row: Record<string, unknown>) => IARecord | null;

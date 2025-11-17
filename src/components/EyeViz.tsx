@@ -29,7 +29,11 @@ function drawIAs(
 	canvasWidth: number,
 	canvasHeight: number,
 	scaleX: number,
-	scaleY: number
+	scaleY: number,
+	defaultFillStyle: string,
+	defaultStrokeStyle: string,
+	defaultLineWidth: number,
+	defaultOpacity: number
 ) {
 	for (const ia of ias) {
 		// Respect time window if provided
@@ -38,13 +42,14 @@ function drawIAs(
 				continue;
 			}
 		}
-		const color = ia.color ?? 'rgba(0, 128, 255, 0.25)';
-		const opacity = (ia.opacity ?? 0.25);
+		const fill = ia.color ?? defaultFillStyle;
+		const stroke = ia.color ?? defaultStrokeStyle;
+		const opacity = (ia.opacity ?? defaultOpacity);
 		ctx.save();
 		ctx.globalAlpha = clamp(opacity, 0, 1);
-		ctx.strokeStyle = color;
-		ctx.fillStyle = color;
-		ctx.lineWidth = 2;
+		ctx.strokeStyle = stroke;
+		ctx.fillStyle = fill;
+		ctx.lineWidth = defaultLineWidth;
 		if (ia.type === 'rect') {
 			const x = scaleCoord(ia.rect.x, coordSystem, canvasWidth, scaleX);
 			const y = scaleCoord(ia.rect.y, coordSystem, canvasHeight, scaleY);
@@ -138,6 +143,10 @@ export const EyeViz = ({
 	pointColor = 'rgba(255, 0, 0, 0.8)',
 	pointOpacity = 0.9,
 	pointRadiusPx = 6,
+	iaFillStyle = 'rgba(0, 128, 255, 0.25)',
+	iaStrokeStyle = 'rgba(0, 128, 255, 1)',
+	iaLineWidth = 2,
+	iaOpacity = 0.25,
 	fixationColumnMap,
 	iaColumnMap,
 	iaRowToShape,
@@ -274,7 +283,20 @@ export const EyeViz = ({
 			}
 		}
 		if (showIAs && ias.length) {
-			drawIAs(ctx, ias, currentTimeMs - iaTimeOffsetMs, coordinateSystem, width, height, iaScaleX, iaScaleY);
+			drawIAs(
+				ctx,
+				ias,
+				currentTimeMs - iaTimeOffsetMs,
+				coordinateSystem,
+				width,
+				height,
+				iaScaleX,
+				iaScaleY,
+				iaFillStyle,
+				iaStrokeStyle,
+				iaLineWidth,
+				iaOpacity
+			);
 		}
 		if (showFixations && fixations.length) {
 			drawFixations(
@@ -301,7 +323,11 @@ export const EyeViz = ({
 		iaTimeOffsetMs,
 		pointColor,
 		pointOpacity,
-		pointRadiusPx
+		pointRadiusPx,
+		iaFillStyle,
+		iaStrokeStyle,
+		iaLineWidth,
+		iaOpacity
 	]);
 
 	useRaf(drawFrame, ready);

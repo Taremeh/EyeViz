@@ -166,6 +166,11 @@ When your columns use different names, supply a mapping:
 - `iaTimeOffsetMs`: align IAs with video (default 0)
 - `initialShowFixations`, `initialShowIAs`: default toggles (true)
 - `pointColor`, `pointOpacity`, `pointRadiusPx`: fixation rendering
+- IA styling (global defaults; individual IA records can still set `color`/`opacity`):
+  - `iaFillStyle` (default `'rgba(0, 128, 255, 0.25)'`)
+  - `iaStrokeStyle` (default `'rgba(0, 128, 255, 1)'`)
+  - `iaLineWidth` (default `2`)
+  - `iaOpacity` (default `0.25`)
 - `fixationColumnMap`: map custom fixation column names (x, y, startMs/startSec, durationMs/durationSec, etc.)
 - `iaColumnMap`: map custom IA column names (x,y,width,height or cx,cy,r or points, label/id, etc.)
 - `iaRowToShape(row)`: if IA report lacks geometry, build shapes from each raw row yourself
