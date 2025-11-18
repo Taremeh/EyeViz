@@ -161,6 +161,11 @@ When your columns use different names, supply a mapping:
 
 ### Props
 
+**EyeViz-specific props:**
+
+- `videoSrc`: string URL or File/Blob of the screen recording (required)
+- `fixationSource`: string URL, File/Blob, or `FixationRecord[]` (required)
+- `iaSource`: string URL, File/Blob, or `IARecord[]` (optional)
 - `coordinateSystem`: 'pixels' | 'normalized' (default 'pixels')
 - `timestampUnit`: 'ms' | 's' (default 'ms') – applied to parsed fixation data
 - `iaTimestampUnit`: 'ms' | 's' | 'us' (default 'ms') – applied to parsed IA times (when present)
@@ -178,6 +183,42 @@ When your columns use different names, supply a mapping:
 - `iaRowToShape(row)`: if IA report lacks geometry, build shapes from each raw row yourself
 - `onParseError(error)`: receive parsing errors
 - `onReady()`: fires when video metadata is ready
+
+**All HTML video element props are also supported** (e.g., `loop`, `muted`, `autoPlay`, `onTimeUpdate`, etc.)
+
+### Ref forwarding
+
+The component supports ref forwarding to access the underlying video element:
+
+```tsx
+import React, { useRef } from 'react';
+import { EyeViz } from 'eyeviz';
+
+export default function App() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleSeek = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = 10; // Seek to 10 seconds
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleSeek}>Seek to 10s</button>
+      <EyeViz
+        ref={videoRef}
+        videoSrc="/video.mp4"
+        fixationSource="/fixations.csv"
+        // All video element props are available:
+        loop
+        muted
+        onTimeUpdate={(e) => console.log('Current time:', e.currentTarget.currentTime)}
+      />
+    </div>
+  );
+}
+```
 
 ### TypeScript types
 

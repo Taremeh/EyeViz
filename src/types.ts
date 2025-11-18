@@ -1,3 +1,5 @@
+import React from 'react';
+
 export type CoordinateSystem = 'pixels' | 'normalized';
 
 export interface FixationRecord {
@@ -75,7 +77,7 @@ export interface IAColumnMap {
 	// Alternatively, caller can fully control mapping via iaRowToShape callback
 }
 
-export interface EyeVizProps {
+export interface EyeVizProps extends Omit<React.ComponentPropsWithoutRef<'video'>, 'src' | 'children'> {
 	videoSrc: string | File | Blob;
 	fixationSource: string | File | Blob | FixationRecord[];
 	iaSource?: string | File | Blob | IARecord[];
@@ -88,8 +90,6 @@ export interface EyeVizProps {
 	iaSurfaceSize?: { width: number; height: number }; // original capture surface for IAs
 	normalizeFixationTime?: boolean; // subtract min start from all fixations
 	normalizeIATime?: boolean; // subtract min start from all IAs
-	style?: import('react').CSSProperties;
-	className?: string;
 	initialShowFixations?: boolean;
 	initialShowIAs?: boolean;
 	pointColor?: string;

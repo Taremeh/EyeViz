@@ -4,12 +4,30 @@ import React from "react";
 import { EyeViz } from "eyeviz";
 
 export default function Page() {
+	const videoRef = React.useRef<HTMLVideoElement>(null);
+
+	const handlePlayPause = () => {
+		if (videoRef.current) {
+			if (videoRef.current.paused) {
+				videoRef.current.play();
+			} else {
+				videoRef.current.pause();
+			}
+		}
+	};
+
 	return (
 		<div style={{ maxWidth: 1000, margin: "40px auto", padding: 16 }}>
 			<h1>EyeViz Next.js Example</h1>
 			<p>Simple demo using the provided sample files.</p>
+			<p>
+				<button onClick={handlePlayPause} style={{ padding: "8px 16px", cursor: "pointer" }}>
+					Play/Pause (via ref)
+				</button>
+			</p>
 			<div style={{ marginTop: 16 }}>
 				<EyeViz
+					ref={videoRef}
 					videoSrc="/screenrecording_sample.mp4"
 					fixationSource="/fixation_report_sample.csv"
 					iaSource="/dynamic_interest_areas_sample.ias"
@@ -36,6 +54,10 @@ export default function Page() {
 					pointOpacity={0.85}
 					pointRadiusPx={18}
 					// .ias already provides IA geometry and timing
+					// You can now pass any video element props:
+					loop
+					muted
+					autoPlay={false}
 				/>
 			</div>
 		</div>

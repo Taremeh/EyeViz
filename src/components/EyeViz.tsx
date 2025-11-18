@@ -123,39 +123,53 @@ function drawFixations(
 	}
 }
 
-export const EyeViz = ({
-	videoSrc,
-	fixationSource,
-	iaSource,
-	coordinateSystem = 'pixels',
-	timestampUnit = 'ms',
-	iaTimestampUnit = 'ms',
-	videoStartOffsetMs = 0,
-	iaTimeOffsetMs = 0,
-	fixationSurfaceSize,
-	iaSurfaceSize,
-	normalizeFixationTime,
-	normalizeIATime,
-	style,
-	className,
-	initialShowFixations = true,
-	initialShowIAs = true,
-	pointColor = 'rgba(255, 0, 0, 0.8)',
-	pointOpacity = 0.9,
-	pointRadiusPx = 6,
-	iaFillStyle = 'rgba(0, 128, 255, 0.25)',
-	iaStrokeStyle = 'rgba(0, 128, 255, 1)',
-	iaLineWidth = 2,
-	iaOpacity = 0.25,
-	fixationColumnMap,
-	iaColumnMap,
-	iaRowToShape,
-	onParseError,
-	onReady
-}: EyeVizProps) => {
+const EyeVizComponent = (props: EyeVizProps, forwardedRef: React.Ref<HTMLVideoElement>) => {
+	const {
+		videoSrc,
+		fixationSource,
+		iaSource,
+		coordinateSystem = 'pixels',
+		timestampUnit = 'ms',
+		iaTimestampUnit = 'ms',
+		videoStartOffsetMs = 0,
+		iaTimeOffsetMs = 0,
+		fixationSurfaceSize,
+		iaSurfaceSize,
+		normalizeFixationTime,
+		normalizeIATime,
+		style,
+		className,
+		initialShowFixations = true,
+		initialShowIAs = true,
+		pointColor = 'rgba(255, 0, 0, 0.8)',
+		pointOpacity = 0.9,
+		pointRadiusPx = 6,
+		iaFillStyle = 'rgba(0, 128, 255, 0.25)',
+		iaStrokeStyle = 'rgba(0, 128, 255, 1)',
+		iaLineWidth = 2,
+		iaOpacity = 0.25,
+		fixationColumnMap,
+		iaColumnMap,
+		iaRowToShape,
+		onParseError,
+		onReady,
+		...videoProps
+	} = props;
 	const containerRef = React.useRef(null as any);
-	const videoRef = React.useRef(null as any);
+	const internalVideoRef = React.useRef(null as any);
 	const canvasRef = React.useRef(null as any);
+	
+	// Combine internal ref with forwarded ref
+	const videoRef = React.useMemo(() => {
+		return (node: HTMLVideoElement | null) => {
+			internalVideoRef.current = node;
+			if (typeof forwardedRef === 'function') {
+				forwardedRef(node);
+			} else if (forwardedRef && 'current' in forwardedRef) {
+				(forwardedRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+			}
+		};
+	}, [forwardedRef]);
 
 	const [fixations, setFixations] = React.useState([] as FixationRecord[]);
 	const [ias, setIAs] = React.useState([] as IARecord[]);
@@ -220,7 +234,7 @@ export const EyeViz = ({
 
 	// Resize canvas to match video dimensions
 	const resizeCanvasToVideo = React.useCallback(() => {
-		const video = videoRef.current;
+		const video = internalVideoRef.current;
 		const canvas = canvasRef.current;
 		if (!video || !canvas) return;
 		const { width, height } = getVideoNaturalSize(video);
@@ -232,7 +246,7 @@ export const EyeViz = ({
 	}, []);
 
 	React.useEffect(() => {
-		const video = videoRef.current;
+		const video = internalVideoRef.current;
 		if (!video) return;
 		if (video.readyState >= 1) {
 			resizeCanvasToVideo();
@@ -252,7 +266,7 @@ export const EyeViz = ({
 
 	// Redraw on RAF
 	const drawFrame = React.useCallback(() => {
-		const video = videoRef.current;
+		const video = internalVideoRef.current;
 		const canvas = canvasRef.current;
 		if (!video || !canvas) return;
 		const ctx = canvas.getContext('2d');
@@ -397,14 +411,20 @@ export const EyeViz = ({
 		};
 	}, [videoSrc]);
 
+	const videoStyle = React.useMemo(() => {
+		const additionalStyle = 'style' in videoProps && typeof videoProps.style === 'object' ? videoProps.style : {};
+		return { ...mediaStyles, ...additionalStyle };
+	}, [mediaStyles, videoProps]);
+
 	return (
 		<div ref={containerRef} className={className} style={containerStyles}>
 			<div style={{ position: 'relative', width: '100%' }}>
 				<video
 					ref={videoRef}
+					{...videoProps}
 					src={source}
 					controls
-					style={mediaStyles}
+					style={videoStyle}
 					playsInline
 				/>
 				<canvas ref={canvasRef} style={overlayCanvasStyle} />
@@ -430,6 +450,10 @@ export const EyeViz = ({
 		</div>
 	);
 };
+
+export const EyeViz = React.forwardRef(EyeVizComponent) as React.ForwardRefExoticComponent<EyeVizProps & React.RefAttributes<HTMLVideoElement>>;
+
+EyeViz.displayName = 'EyeViz';
 
 export default EyeViz;
 
