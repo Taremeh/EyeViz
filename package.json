@@ -7,7 +7,7 @@
   "homepage": "https://www.npmjs.com/package/eyeviz",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/Taremeh/EyeViz"
   },
   "type": "module",
   "main": "dist/index.cjs",
@@ -21,10 +21,15 @@
     }
   },
   "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap",
     "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "peerDependencies": {
     "react": ">=17 || >=18",
