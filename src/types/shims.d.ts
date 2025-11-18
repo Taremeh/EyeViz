@@ -27,5 +27,3 @@ declare namespace JSX {
     [elemName: string]: any;
   }
 }
-*** End Patch```  }```} ***!
-

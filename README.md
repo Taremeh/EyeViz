@@ -1,6 +1,8 @@
-## eyeviz
+## EyeViz
 
 React/Next.js component to render a screen recording video with gaze fixations and Interest Area (IA) overlays that can be toggled on/off.
+
+❗ Note: This is an early version of the EyeViz library and might not work as expected. Tested as of 0.1.0 is display of fixations and dynamic interest areas from SR Research EyeLink files.
 
 ### Features
 
@@ -201,5 +203,3 @@ import type { FixationRecord, IARecord } from 'eyeviz';
 ### License
 
 MIT
-*** End Patch
-
