@@ -1,6 +1,6 @@
 {
   "name": "eyeviz",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React/Next.js component to render screen recordings with gaze fixations and interest area overlays.",
   "license": "MIT",
   "author": "",
@@ -59,4 +59,3 @@
     "visualization"
   ]
 }
-
