@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "description": "React/Next.js component to render screen recordings with gaze fixations and interest area overlays.",
   "license": "MIT",
-  "author": "",
+  "author": "Tarek Alakmeh",
   "homepage": "https://www.npmjs.com/package/eyeviz",
   "repository": {
     "type": "git",
@@ -29,20 +29,23 @@
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap",
     "dev": "tsup src/index.ts --format esm,cjs --dts --sourcemap --watch",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run clean && npm run build"
+    "prepublishOnly": "npm run clean && npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "peerDependencies": {
-    "react": ">=17 || >=18",
-    "react-dom": ">=17 || >=18"
+    "react": ">=17",
+    "react-dom": ">=17"
   },
   "dependencies": {
     "papaparse": "^5.4.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
     "tsup": "^8.0.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^5.1.1"
   },
   "engines": {
     "node": ">=18"
@@ -57,5 +60,8 @@
     "interest-areas",
     "overlay",
     "visualization"
-  ]
+  ],
+  "bugs": {
+    "url": "https://github.com/Taremeh/EyeViz/issues"
+  }
 }

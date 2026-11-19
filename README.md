@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/eyeviz"><img alt="npm" src="https://img.shields.io/npm/v/eyeviz"></a>
+  <a href="https://github.com/Taremeh/EyeViz/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Taremeh/EyeViz/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="React 17 or later" src="https://img.shields.io/badge/React-17%2B-61dafb?logo=react&logoColor=white">
   <img alt="TypeScript types included" src="https://img.shields.io/badge/types-included-3178c6?logo=typescript&logoColor=white">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -241,8 +242,10 @@ sample reports in [`data/`](data). It expects a screen recording that you add yo
 
 ```bash
 npm install
-npm run build   # ESM, CommonJS and type definitions into dist/
-npm run dev     # the same, rebuilding on change
+npm test            # parser tests, including the sample reports in data/
+npm run typecheck
+npm run build       # ESM, CommonJS and type definitions into dist/
+npm run dev         # the same, rebuilding on change
 ```
 
 ## License

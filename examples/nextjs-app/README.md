@@ -13,10 +13,10 @@ cd examples/nextjs-app
 npm install
 ```
 
-3) Build the local package (in a separate terminal):
+3) Build the local package (in a separate terminal, from the repository root):
 
 ```bash
-cd /EyeViz
+npm install
 npm run build
 ```
 
