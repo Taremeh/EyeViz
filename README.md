@@ -1,10 +1,20 @@
-## EyeViz
+# EyeViz
 
-React/Next.js component to render a screen recording video with gaze fixations and Interest Area (IA) overlays that can be toggled on/off.
+[![npm](https://img.shields.io/npm/v/eyeviz)](https://www.npmjs.com/package/eyeviz)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-❗ Note: This is an early version of the EyeViz library and might not work as expected. Tested as of 0.1.0 is display of fixations and dynamic interest areas from SR Research EyeLink files.
+A React component that plays a screen recording with the viewer's gaze drawn on top: fixations as points, and
+interest areas (IAs) as shapes that appear and disappear with the recording. It reads the reports that
+eye-tracking software exports, so you can replay a session in the browser without converting anything first.
 
-### Features
+EyeViz is an early version. It is tested with fixation reports and dynamic interest areas from SR Research
+EyeLink; other formats work through column mapping but are less tested.
+
+**Contents:** [Features](#features) · [Install](#install) · [Quick start](#quick-start-react) ·
+[Next.js](#nextjs-usage) · [File formats](#default-column-mapping-based-on-provided-samples) ·
+[Column mapping](#custom-column-names--mapping) · [Props](#props) · [Types](#typescript-types)
+
+## Features
 
 - Parse fixation reports from CSV/XLS/XLSX (and inline CSV/TXT) with flexible header detection
 - Parse IA reports from CSV/XLS/XLSX/TXT supporting rect, polygon, and circle areas
@@ -12,7 +22,7 @@ React/Next.js component to render a screen recording video with gaze fixations a
 - Toggle overlays, configurable point style, coordinate systems (pixels or normalized)
 - Next.js/SSR-safe (no `window` access at import time)
 
-### Install
+## Install
 
 ```bash
 npm install eyeviz
@@ -26,7 +36,7 @@ Peer deps:
 npm install react react-dom
 ```
 
-### Quick start (React)
+## Quick start (React)
 
 ```tsx
 import React from 'react';
@@ -50,7 +60,7 @@ export default function App() {
 }
 ```
 
-### Next.js usage
+## Next.js usage
 
 - Use the component in a Client Component. Either add `"use client"` at the top of your page/component or wrap EyeViz in a client component.
 
@@ -83,13 +93,7 @@ export default function Page() {
 }
 ```
 
-### Inputs
-
-- `videoSrc`: string URL or File/Blob of the screen recording
-- `fixationSource`: string URL, File/Blob, or `FixationRecord[]`
-- `iaSource`: string URL, File/Blob, or `IARecord[]` (optional)
-
-### Default column mapping (based on provided samples)
+## Default column mapping (based on provided samples)
 
 Fixations (e.g. `fixation_report_sample.csv`, tab-separated):
 
@@ -122,7 +126,7 @@ IAs support:
 - Circle: cx, cy, r
 - Polygon: `points` string (e.g. `"10,10; 50,10; 50,50"`), or columns `x1,y1,x2,y2,...`
 
-### Custom column names / mapping
+## Custom column names / mapping
 
 When your columns use different names, supply a mapping:
 
@@ -159,7 +163,7 @@ When your columns use different names, supply a mapping:
 />
 ```
 
-### Props
+## Props
 
 **EyeViz-specific props:**
 
@@ -186,7 +190,7 @@ When your columns use different names, supply a mapping:
 
 **All HTML video element props are also supported** (e.g., `loop`, `muted`, `autoPlay`, `onTimeUpdate`, etc.)
 
-### Ref forwarding
+## Ref forwarding
 
 The component supports ref forwarding to access the underlying video element:
 
@@ -220,7 +224,7 @@ export default function App() {
 }
 ```
 
-### TypeScript types
+## TypeScript types
 
 ```ts
 import type { FixationRecord, IARecord } from 'eyeviz';
@@ -236,11 +240,15 @@ import type { FixationRecord, IARecord } from 'eyeviz';
 - Polygon: `{ type: 'polygon', polygon: Array<{ x, y }>, ... }`
 - Circle: `{ type: 'circle', circle: { cx, cy, r }, ... }`
 
-### Notes
+## Notes
 
 - Coordinates default to pixel space; for normalized data (0–1), set `coordinateSystem="normalized"`.
 - For `.txt` IA files, the parser attempts CSV-style parsing with headers. You can also pass parsed arrays directly.
 
-### License
+## Example app
 
-MIT
+[`examples/nextjs-app`](examples/nextjs-app) is a minimal Next.js app that shows the component with the sample files in [`data/`](data).
+
+## License
+
+[MIT](LICENSE)
